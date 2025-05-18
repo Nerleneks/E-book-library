@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>PDF Reader</title>
+    <style>
+        :root {
+            /* Theme variables will be set by JavaScript */
+            --background-color: #f0f0f0;
+            --toolbar-bg: #2c3e50;
+            --toolbar-text: #ffffff;
+            --button-bg: #3498db;
+            --button-hover: #2980b9;
+            --text-color: #2c3e50;
+            --border-color: #e0e0e0;
+            --shadow-color: rgba(0,0,0,0.1);
+            --toc-bg: #ffffff;
+            --toc-hover: #f0f0f0;
+            --toc-active: #e3f2fd;
+            --scrollbar-track: #f1f1f1;
+            --scrollbar-thumb: #888;
+            --scrollbar-thumb-hover: #555;
+        }
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: var(--background-color);
+            color: var(--text-color);
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            height: 100vh;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: var(--background-color);
+        }
+        .toolbar {
+            background-color: var(--toolbar-bg);
+            padding: 10px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            position: relative;
+            overflow: visible;
+            z-index: 2;
+            box-shadow: 0 2px 4px var(--shadow-color);
+        }
+        .toolbar button {
+            background-color: var(--button-bg);
+            color: var(--toolbar-text);
+            border: none;
+            padding: 8px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .toolbar button:hover {
+            background-color: var(--button-hover);
+        }
+        .toolbar button svg {
+            width: 16px;
+            height: 16px;
+            fill: currentColor;
+        }
+        .page-controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-left: 20px;
+        }
+        .page-controls span {
+            color: white;
+        }
+        #pdf-container {
+            flex: 1;
+            width: 100%;
+            height: calc(100vh - 60px);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: flex-start;
+            align-items: center;
+            background-color: var(--background-color);
+            position: relative;
+            box-sizing: border-box;
+            overflow: auto;
+            min-width: 0;
+        }
+        #pdf-render {
+            margin: auto;
+            padding: 0;
+            display: block;
+            background-color: white !important;
+            box-shadow: 0 0 10px var(--shadow-color);
+        }
+        .zoom-controls {
+            margin-left: auto;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: white;
+        }
+        .zoom-value {
+            min-width: 60px;
+            text-align: center;
+            font-size: 14px;
+            color: white;
+            user-select: none;
+            cursor: pointer;
+            padding: 2px 5px;
+            border-radius: 3px;
+            transition: background-color 0.2s;
+        }
+        .zoom-value:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+        .zoom-input {
+            width: 50px;
+            background: white;
+            border: 1px solid #3498db;
+            border-radius: 3px;
+            padding: 2px 5px;
+            font-size: 14px;
+            text-align: center;
+            outline: none;
+            display: none;
+        }
+        .zoom-input:focus {
+            border-color: #2980b9;
+        }
+        .zoom-input.visible {
+            display: block;
+        }
+        .zoom-value.hidden {
+            display: none;
+        }
+        /* Hide scrollbars but keep functionality */
+        #pdf-container::-webkit-scrollbar {
+            width: 10px;
+            height: 10px;
+        }
+        #pdf-container::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        #pdf-container::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 5px;
+        }
+        #pdf-container::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+        .fit-page-button {
+            margin-left: 10px;
+            padding: 8px 12px !important;
+        }
+        .fit-width-button {
+            margin-left: 10px;
+            padding: 8px 12px !important;
+        }
+        .fit-width-button svg {
+            width: 16px;
+            height: 16px;
+            fill: currentColor;
+        }
+        /* Tooltip styles for all zoom buttons */
+        .toolbar button[title] {
+            position: relative;
+        }
+        .toolbar button[title]:hover::after {
+            content: attr(title);
+            position: absolute;
+            bottom: -30px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            white-space: nowrap;
+            z-index: 1000;
+            pointer-events: none;
+        }
+        .view-mode-button {
+            margin-left: 10px;
+            padding: 8px 12px !important;
+        }
+        .view-mode-button svg {
+            width: 16px;
+            height: 16px;
+            fill: currentColor;
+        }
+        .view-mode-button.active {
+            background-color: #2980b9;
+        }
+        #pdf-container.double-page-view {
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            gap: 0;
+            padding: 20px;
+        }
+        .page-canvas {
+            margin: 0;
+            padding: 0;
+            display: block;
+            background-color: white !important;
+            box-shadow: 0 0 10px var(--shadow-color);
+        }
+        .page-container {
+            display: flex;
+            gap: 2px;
+            justify-content: center;
+            align-items: flex-start;
+            margin: auto;
+        }
+        /* Table of Contents styles */
+        #toc-container {
+            position: fixed;
+            transform: translateX(-100%);
+            top: 0;
+            width: 300px;
+            height: 100vh;
+            background: var(--toc-bg);
+            box-shadow: none;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            z-index: 1000;
+            overflow-y: auto;
+            overflow-x: hidden;
+            padding: 20px;
+            border: none;
+            scrollbar-width: thin;
+            scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+        }
+
+        .toc-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .toc-title {
+            font-size: 16px;
+            font-weight: bold;
+            color: var(--text-color);
+            margin: 0;
+        }
+
+        .toc-close {
+            background: none;
+            border: none;
+            color: var(--text-color);
+            cursor: pointer;
+            padding: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
+            border-radius: 4px;
+            transition: all 0.2s ease;
+        }
+
+        .toc-close:hover {
+            background-color: var(--toc-hover);
+            color: #e74c3c;
+        }
+
+        .toc-close:focus {
+            outline: none;
+            box-shadow: 0 0 0 2px var(--button-bg);
+        }
+
+        #toc-container.open {
+            transform: translateX(0);
+            box-shadow: 2px 0 5px var(--shadow-color);
+        }
+
+        #toc-container::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        #toc-container::-webkit-scrollbar-track {
+            background: var(--scrollbar-track);
+        }
+
+        #toc-container::-webkit-scrollbar-thumb {
+            background-color: var(--scrollbar-thumb);
+            border-radius: 4px;
+            border: 2px solid var(--scrollbar-track);
+        }
+
+        #toc-container::-webkit-scrollbar-thumb:hover {
+            background-color: var(--scrollbar-thumb-hover);
+        }
+
+        .toc-item {
+            padding: 8px 10px;
+            cursor: pointer;
+            border-radius: 4px;
+            margin-bottom: 4px;
+            transition: all 0.2s ease;
+            color: var(--text-color);
+            position: relative;
+        }
+
+        .toc-item:hover {
+            background-color: var(--toc-hover);
+        }
+
+        .toc-item.active {
+            background-color: var(--toc-active);
+            color: var(--button-bg);
+            font-weight: 500;
+        }
+
+        .toc-item-no-link {
+            cursor: default;
+            color: var(--text-color);
+            opacity: 0.7;
+        }
+
+        .toc-item-no-link:hover {
+            background-color: transparent;
+        }
+
+        /* Добавляем индикатор загрузки при переходе */
+        .toc-item.loading {
+            pointer-events: none;
+            opacity: 0.7;
+        }
+
+        .toc-item.loading::after {
+            content: '';
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 12px;
+            height: 12px;
+            border: 2px solid var(--button-bg);
+            border-radius: 50%;
+            border-top-color: transparent;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: translateY(-50%) rotate(360deg);
+            }
+        }
+
+        /* Стили для сообщений об ошибках */
+        .toc-error-message,
+        .toc-empty-message {
+            padding: 20px;
+            text-align: center;
+            color: var(--text-color);
+            font-size: 14px;
+            line-height: 1.5;
+            opacity: 0.8;
+        }
+
+        .toc-error-message {
+            color: #e74c3c;
+            opacity: 1;
+        }
+
+        .toc-level-0 { margin-left: 0; }
+        .toc-level-1 { margin-left: 20px; }
+        .toc-level-2 { margin-left: 40px; }
+        .toc-level-3 { margin-left: 60px; }
+        /* Стили для двухстраничного режима */
+        #pdf-container.double-page-view {
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            gap: 0;
+            padding: 20px;
+        }
+        /* Дополнительные стили для принудительного соединения страниц */
+        #pdf-container.double-page-view canvas {
+            margin: 0 !important;
+            display: inline-block !important;
+        }
+        #pdf-container.double-page-view .page-canvas {
+            margin: 0 !important;
+            display: inline-block !important;
+        }
+        /* Контейнер для страниц */
+        .pages-wrapper {
+            display: inline-flex !important;
+            justify-content: flex-start !important;
+            align-items: flex-start !important;
+            gap: 4px !important;
+            font-size: 0;
+            min-width: min-content;
+            margin: 0 auto;
+        }
+        /* Theme switcher styles */
+        .theme-switcher {
+            margin-left: auto;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        .theme-button {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            border: 2px solid transparent;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .theme-button:hover {
+            transform: scale(1.1);
+        }
+        .theme-button.active {
+            border-color: var(--toolbar-text);
+        }
+        .theme-button.light {
+            background-color: #f0f0f0;
+        }
+        .theme-button.dark {
+            background-color: #1a1a1a;
+        }
+        .theme-button.sepia {
+            background-color: #f4ecd8;
+        }
+        .settings-button {
+            margin-left: 10px;
+            padding: 8px !important;
+            border-radius: 50% !important;
+        }
+        .settings-menu {
+            position: fixed;
+            top: 60px;
+            right: 10px;
+            width: 300px;
+            background: var(--toc-bg);
+            border-radius: 8px;
+            box-shadow: 0 2px 10px var(--shadow-color);
+            padding: 20px;
+            display: none;
+            z-index: 1000;
+        }
+        .settings-menu.open {
+            display: block;
+        }
+        .settings-group {
+            margin-bottom: 20px;
+        }
+        .settings-group h3 {
+            margin: 0 0 10px 0;
+            font-size: 14px;
+            color: var(--text-color);
+        }
+        .theme-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            padding: 10px 0;
+        }
+        .theme-button {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border: 2px solid var(--border-color);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            padding: 0;
+            position: relative;
+        }
+        .theme-button:hover {
+            transform: scale(1.1);
+            box-shadow: 0 2px 5px var(--shadow-color);
+        }
+        .theme-button.active {
+            border-color: var(--button-hover);
+            box-shadow: 0 0 0 2px var(--button-hover);
+        }
+        .theme-button.light {
+            background: #f0f0f0;
+        }
+        .theme-button.dark {
+            background: #1a1a1a;
+        }
+        .theme-button.sepia {
+            background: #f4ecd8;
+        }
+        /* Add checkmark for active theme */
+        .theme-button.active::after {
+            content: "✓";
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: var(--text-color);
+            font-size: 20px;
+            text-shadow: 0 0 2px rgba(255,255,255,0.5);
+        }
+        .settings-control {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .settings-control input[type="range"] {
+            flex: 1;
+        }
+        .settings-control .value {
+            min-width: 50px;
+            text-align: right;
+            color: var(--text-color);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="toolbar">
+            <button id="toggle-toc" title="Оглавление">
+                <svg viewBox="0 0 24 24" width="16" height="16">
+                    <path fill="currentColor" d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/>
+                </svg>
+            </button>
+            <div class="page-controls">
+                <button id="prev-page">Previous</button>
+                <span id="page-num">Page: 1</span>
+                <span id="page-count">of 1</span>
+                <button id="next-page">Next</button>
+            </div>
+            <div class="zoom-controls">
+                <button id="zoom-out" title="Zoom Out">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14zm-2-5h2V7h1v2h2v1h-2v2h-1v-2H7z"/>
+                    </svg>
+                </button>
+                <span id="zoom-value" class="zoom-value">100%</span>
+                <input type="text" id="zoom-input" class="zoom-input" value="100%" />
+                <button id="zoom-in" title="Zoom In">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14zm-2-5h2V7h1v2h2v1h-2v2h-1v-2H7z"/>
+                    </svg>
+                </button>
+                <button id="toggle-double-page" class="view-mode-button" title="Toggle Double Page View">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M19 3H5C3.9 3 3 3.9 3 5v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 0v14H5V5h7zm7 14h-6V5h6v12z"/>
+                    </svg>
+                </button>
+                <button id="fit-page" class="fit-page-button" title="Fit to Page">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M19 12h-2v3h-3v2h5v-5zM7 9h3V7H5v5h2V9zm14-6H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16.01H3V4.99h18v14.02z"/>
+                    </svg>
+                </button>
+                <button id="toggle-settings" class="settings-button" title="Настройки">
+                    <svg viewBox="0 0 24 24" width="16" height="16">
+                        <path fill="currentColor" d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.03-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+        <div id="toc-container">
+            <div class="toc-header">
+                <h3 class="toc-title">Оглавление</h3>
+                <button class="toc-close" title="Close">×</button>
+            </div>
+        </div>
+        <div id="pdf-container">
+            <canvas id="pdf-render"></canvas>
+        </div>
+    </div>
+    <div id="loading-indicator" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0, 0, 0, 0.7); color: white; padding: 20px; border-radius: 8px; z-index: 1000;">
+        Загружаемая страница...
+    </div>
+    <div class="settings-menu">
+        <div class="settings-group">
+            <h3>Темы</h3>
+            <div class="theme-buttons">
+                <button class="theme-button light" title="Light theme" onclick="window.switchTheme('light')"></button>
+                <button class="theme-button dark" title="Dark theme" onclick="window.switchTheme('dark')"></button>
+                <button class="theme-button sepia" title="Sepia theme" onclick="window.switchTheme('sepia')"></button>
+            </div>
+        </div>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    <script src="renderer.js"></script>
+    <script src="theme.js"></script>
+</body>
+</html> 
